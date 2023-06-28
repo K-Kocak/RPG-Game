@@ -2,17 +2,33 @@
 using Engine.Factories;
 using Engine.Models;
 using Engine.Services;
+using Newtonsoft.Json;
 namespace Engine.ViewModels
 {
     public class GameSession : BaseNotificationClass
     {
+
+
+
         private readonly MessageBroker _messageBroker = MessageBroker.GetInstance();
-        private Battle _currentBattle;
         #region Properties
+        private GameDetails _gameDetails;
         private Player _currentPlayer;
         private Location _currentLocation;
+        private Battle _currentBattle;
         private Monster _currentMonster;
         private Trader _currentTrader;
+        [JsonIgnore]
+        public GameDetails GameDetails
+        {
+            get => _gameDetails;
+            set
+            {
+                _gameDetails = value;
+                OnPropertyChanged();
+            }
+        }
+        [JsonIgnore]
         public World CurrentWorld { get; }
         public Player CurrentPlayer
         {
@@ -49,6 +65,7 @@ namespace Engine.ViewModels
                 CurrentTrader = CurrentLocation.TraderHere;
             }
         }
+        [JsonIgnore]
         public Monster CurrentMonster
         {
             get => _currentMonster;
@@ -58,6 +75,7 @@ namespace Engine.ViewModels
                 {
                     _currentBattle.OnCombatVictory -= OnCurrentMonsterKilled;
                     _currentBattle.Dispose();
+                    _currentBattle = null;
                 }
                 _currentMonster = value;
                 if (_currentMonster != null)
@@ -69,6 +87,7 @@ namespace Engine.ViewModels
                 OnPropertyChanged(nameof(HasMonster));
             }
         }
+        [JsonIgnore]
         public Trader CurrentTrader
         {
             get => _currentTrader;
@@ -79,31 +98,29 @@ namespace Engine.ViewModels
                 OnPropertyChanged(nameof(HasTrader));
             }
         }
+        [JsonIgnore]
         public bool HasLocationToNorth =>
             CurrentWorld.LocationAt(CurrentLocation.XCoordinate, CurrentLocation.YCoordinate + 1) != null;
+        [JsonIgnore]
         public bool HasLocationToEast =>
             CurrentWorld.LocationAt(CurrentLocation.XCoordinate + 1, CurrentLocation.YCoordinate) != null;
+        [JsonIgnore]
         public bool HasLocationToSouth =>
             CurrentWorld.LocationAt(CurrentLocation.XCoordinate, CurrentLocation.YCoordinate - 1) != null;
+        [JsonIgnore]
         public bool HasLocationToWest =>
             CurrentWorld.LocationAt(CurrentLocation.XCoordinate - 1, CurrentLocation.YCoordinate) != null;
+        [JsonIgnore]
         public bool HasMonster => CurrentMonster != null;
+        [JsonIgnore]
         public bool HasTrader => CurrentTrader != null;
         #endregion
-        public GameSession()
+        public GameSession(Player player, int xCoordinate, int yCoordinate)
         {
-            CurrentPlayer = new Player("Scott", "Fighter", 0, 10, 10, 1000000);
-            if (!CurrentPlayer.Inventory.Weapons.Any())
-            {
-                CurrentPlayer.AddItemToInventory(ItemFactory.CreateGameItem(1001));
-            }
-            CurrentPlayer.AddItemToInventory(ItemFactory.CreateGameItem(2001));
-            CurrentPlayer.LearnRecipe(RecipeFactory.RecipeByID(1));
-            CurrentPlayer.AddItemToInventory(ItemFactory.CreateGameItem(3001));
-            CurrentPlayer.AddItemToInventory(ItemFactory.CreateGameItem(3002));
-            CurrentPlayer.AddItemToInventory(ItemFactory.CreateGameItem(3003));
+            PopulateGameDetails();
             CurrentWorld = WorldFactory.CreateWorld();
-            CurrentLocation = CurrentWorld.LocationAt(0, 0);
+            CurrentPlayer = player;
+            CurrentLocation = CurrentWorld.LocationAt(xCoordinate, yCoordinate);
         }
         public void MoveNorth()
         {
@@ -132,6 +149,10 @@ namespace Engine.ViewModels
             {
                 CurrentLocation = CurrentWorld.LocationAt(CurrentLocation.XCoordinate - 1, CurrentLocation.YCoordinate);
             }
+        }
+        private void PopulateGameDetails()
+        {
+            GameDetails = GameDetailsService.ReadGameDetails();
         }
         private void CompleteQuestsAtLocation()
         {
@@ -193,14 +214,26 @@ namespace Engine.ViewModels
         }
         public void AttackCurrentMonster()
         {
-            _currentBattle.AttackOpponent();
+            _currentBattle?.AttackOpponent();
         }
         public void UseCurrentConsumable()
         {
             if (CurrentPlayer.CurrentConsumable != null)
             {
+                if (_currentBattle == null)
+                {
+                    CurrentPlayer.OnActionPerformed += OnConsumableActionPerformed;
+                }
                 CurrentPlayer.UseCurrentConsumable();
+                if (_currentBattle == null)
+                {
+                    CurrentPlayer.OnActionPerformed -= OnConsumableActionPerformed;
+                }
             }
+        }
+        private void OnConsumableActionPerformed(object sender, string result)
+        {
+            _messageBroker.RaiseMessage(result);
         }
         public void CraftItemUsing(Recipe recipe)
         {

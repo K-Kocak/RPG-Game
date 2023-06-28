@@ -6,6 +6,8 @@ namespace Engine.Services
     {
         // Use the Singleton design pattern for this class,
         // to ensure everything in the game sends messages through this one object.
+
+        // This is a service
         private static readonly MessageBroker s_messageBroker =
             new MessageBroker();
         private MessageBroker()
